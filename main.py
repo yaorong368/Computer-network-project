@@ -139,18 +139,18 @@ if __name__=="__main__":
     
 
     
-    # user_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
-    # event_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
-    
-    # model = mix_model(
-    #     AttnVGG(in_channels=4, out_channels=300, final_channels=100), 
-    #     AttnVGG(in_channels=4, out_channels=300, final_channels=100),
-    #     )
+    user_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
+    event_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
     
     model = mix_model(
-        user_net(1, 300),
-        user_net(1, 300)
-    )
+        AttnVGG(in_channels=4, out_channels=300, final_channels=100), 
+        AttnVGG(in_channels=4, out_channels=300, final_channels=100),
+        )
+    
+#     model = mix_model(
+#         user_net(1, 300),
+#         user_net(1, 300)
+#     )
     criterion = nn.BCELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001) 
     
