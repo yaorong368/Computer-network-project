@@ -34,7 +34,7 @@ class mix_model(nn.Module):
         
         predict = torch.matmul(user_feature, event_feature.transpose(0, 1))
         
-        return torch.sigmoid(predict)
+        return torch.sigmoid(torch.diagonal(predict)).unsqueeze(1)
 
 
 class CustomRunner(dl.Runner):
@@ -44,12 +44,14 @@ class CustomRunner(dl.Runner):
         user_remain,
         user_remain_event,
         epochs,
+        batch_size
         ):
         super().__init__()
         self.epochs = epochs
         self._logdir = logdir
         self.user_remain = user_remain
         self.user_remain_event = user_remain_event
+        self.batch_size = batch_size
         
     
     def get_loggers(self):
@@ -65,14 +67,14 @@ class CustomRunner(dl.Runner):
                 train_dataset,
                 num_replicas=self.engine.world_size,
                 rank=self.engine.rank,
-                shuffle=False,
+                shuffle=True,
             )
             
             valid_sampler = DistributedSampler(
                 test_dataset,
                 num_replicas=self.engine.world_size,
                 rank=self.engine.rank,
-                shuffle=False,
+                shuffle=True,
             )
         else:
             train_sampler = valid_sampler = None
@@ -81,6 +83,7 @@ class CustomRunner(dl.Runner):
         train_loader = DataLoader(
             dataset=train_dataset, 
             sampler=train_sampler,
+            batch_size = self.batch_size,
             pin_memory=True,
             num_workers=1,
             )
@@ -88,6 +91,7 @@ class CustomRunner(dl.Runner):
         test_loader = DataLoader(
             dataset=test_dataset, 
             sampler=valid_sampler,
+            batch_size = self.batch_size,
             pin_memory=True,
             num_workers=1,
             )   
@@ -104,16 +108,20 @@ class CustomRunner(dl.Runner):
         
         
     def handle_batch(self, batch):
-        user_tensor, event_matrix_train, event_matrix_test,  train_target, test_target = batch
-        predict1 = model(user_tensor, event_matrix_train)
-        predict2 = model(user_tensor, event_matrix_test)
+        # user_tensor, event_matrix_train, event_matrix_test,  train_target, test_target = batch
+        # predict1 = model(user_tensor, event_matrix_train)
+        # predict2 = model(user_tensor, event_matrix_test)
         
-        loss1 = F.mse_loss(predict1, train_target)
-        loss2 = F.mse_loss(predict2, test_target)
-        loss = (loss1 + loss2)/2
+        # loss1 = F.mse_loss(predict1, train_target)
+        # loss2 = F.mse_loss(predict2, test_target)
+        # loss = (loss1 + loss2)/2
+        user_tensor, event_matrix, target = batch
+        predict = model(user_tensor, event_matrix)
+        loss = F.binary_cross_entropy(predict, target)
+        
         
         self.batch_metrics.update(
-            {"loss": loss, "loss1":loss1, "loss2":loss2}
+            {"loss": loss}
         )
         
 
@@ -132,6 +140,8 @@ if __name__=="__main__":
         events_per_user = user_event[user][1:-1].split(', ')
         if len(events_per_user) < 2:
             delete_index.append(user)
+        elif len(events_per_user) >8:
+            delete_index.append(user)
     user_remain = np.delete(user_index, delete_index)
     user_remain = np.arange(len(user_remain))
     user_remain_event = np.delete(user_event, delete_index) # the relative events each user has attended
@@ -139,31 +149,34 @@ if __name__=="__main__":
     
 
     
-    user_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
-    event_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
+    # user_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
+    # event_net = AttnVGG(in_channels=4, out_channels=300, final_channels=100)
+    
+    # model = mix_model(
+    #     AttnVGG(in_channels=4, out_channels=300, final_channels=100), 
+    #     AttnVGG(in_channels=4, out_channels=300, final_channels=100),
+    #     )
     
     model = mix_model(
-        AttnVGG(in_channels=4, out_channels=300, final_channels=100), 
-        AttnVGG(in_channels=4, out_channels=300, final_channels=100),
-        )
+        user_net(1, 300),
+        user_net(1, 300)
+    )
+    # criterion = nn.BCELoss()
+    # criterion = nn.CrossEntropyLoss()
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001) 
     
-#     model = mix_model(
-#         user_net(1, 300),
-#         user_net(1, 300)
-#     )
-    criterion = nn.BCELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001) 
+    if os.path.exists('./log1'):
+        shutil.rmtree('./log1')
     
-    if os.path.exists('./log'):
-        shutil.rmtree('./log')
-    
-    logdir = './log'
+    logdir = './log1'
     
     
     runner = CustomRunner(
         logdir=logdir,
         user_remain=user_remain,
         user_remain_event=user_remain_event,
+        batch_size = 1,
         epochs=30
     )
     
@@ -174,6 +187,21 @@ if __name__=="__main__":
         loaders=None, 
         callbacks=[
             CheckpointCallback(logdir=logdir),
+            # dl.CriterionCallback(
+            #     input_key="logits", 
+            #     target_key="tgt", 
+            #     metric_key="logits_loss",
+            #     ),
+            # dl.CriterionCallback(
+            #     input_key="prior_logits", 
+            #     target_key="tgt", 
+            #     metric_key="prior_logits_loss",
+            #     ),
+            # dl.CriterionCallback(
+            #     input_key="cond_logits", 
+            #     target_key="tgt", 
+            #     metric_key="cond_logits_loss",
+            #     ),
             dl.OptimizerCallback(
                 metric_key="loss",
                 ),
@@ -187,33 +215,5 @@ if __name__=="__main__":
         )
     
     
-    # num_epoch = 30
-    
-    # for epoch in range(num_epoch):
-    #     for step, batch in enumerate(loader):
-    #         user_tensor, event_matrix_train, event_matrix_test,  train_target, test_target = batch
-    #         user_tensor = user_tensor.to(device)
-    #         event_matrix_train = event_matrix_train.to(device)
-    #         event_matrix_test = event_matrix_test.to(device)
-    #         train_target = train_target.to(device)
-    #         test_target = test_target.to(device)
-            
-            
-    #         predict1 = model(user_tensor, event_matrix_train)
-    #         predict2 = model(user_tensor, event_matrix_test)
-            
-    #         loss1 = criterion(predict1, train_target)
-    #         loss2 = criterion(predict2, test_target)
-    #         loss = (loss1 + loss2)/2
-            
-    #         print(loss)
-            
-    #         loss.backward()
-    #         optimizer.step()
-        
     
     
-    
-    # opt = model(a[0], a[1])
-    
-    # print(opt)
