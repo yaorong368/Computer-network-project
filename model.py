@@ -18,7 +18,7 @@ class user_net(nn.Module):
         self.act2 = nn.Sigmoid()
         self.conv3 = convlayer(in_channels, out_channels_l, 5)
         self.act3 = nn.Sigmoid()
-        self.linear = nn.Linear(out_channels, 10)
+        self.linear = nn.Linear(out_channels, 20)
         self.act4 = nn.Sigmoid()
             
             
