@@ -10,7 +10,7 @@ For data scraping, the .ipynb file are uploaded in scraper file.
     ```
 - Basic tools requirement
     - PyTorch 3.6 or higher
-    - Catalyst
+    - Catalyst (Catalyst verson should be 21.07)
     - TensorBoard
 
 
