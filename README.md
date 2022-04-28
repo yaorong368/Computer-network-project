@@ -14,3 +14,4 @@ For data scraping, the .ipynb file are uploaded in scraper file.
     - TensorBoard
 
 
+FYI:for the closs evaluation, if you want to run the code, please contact us. The data is too big to upload.
