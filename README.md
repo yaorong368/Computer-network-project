@@ -1,4 +1,4 @@
-# Computer_network_project
+# Computer_network_class_project
 
 This is the repository of CSC8220 Advanced Computer Network.
 
